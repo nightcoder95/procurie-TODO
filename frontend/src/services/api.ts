@@ -1,28 +1,31 @@
-// import axios from 'axios';
+import axios from 'axios';
+import { AuthTokens } from '@/types';
 
-// // Axios Instance for API requests
-// const api = axios.create({
-//     baseURL: process.env.NEXT_PUBLIC_API_URL,
-//     headers:{
-//         'Content-Type': 'application/json',
-//     }
-// });
 
-// // Add a request interceptor to include the token in headers
-// api.interceptors.request.use(
-//   (config) => {
-//     // Check if window is defined (i.e., we're in the browser)
-//     if (typeof window !== 'undefined') {
-//       const token = localStorage.getItem('token');
-//       if (token) {
-//         config.headers.Authorization = `Bearer ${token}`;
-//       }
-//     }
-//     return config;
-//   },
-//   (error) => {
-//     return Promise.reject(error);
-//   }
-// );
+// Instance of axios
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
-// export default api;
+// Axios interceptor function will run before each request is sent.
+api.interceptors.request.use(
+  (config) => {
+    // get the tokens from localStorage
+    const tokensString = localStorage.getItem('authTokens');
+    if (tokensString) {
+      const tokens: AuthTokens = JSON.parse(tokensString);
+      // If an access token exists, we add it to the request's Authorization header.
+      // Django backend will use this header to authenticate the user.
+      config.headers.Authorization = `Bearer ${tokens.access}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+export default api;
