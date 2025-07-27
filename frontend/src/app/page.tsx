@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, FormEvent, useMemo } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Todo } from '../types';
 import api from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Trash2, Plus, LogOut, ClipboardList, Pencil, Search, ListFilter } from 'lucide-react';
+import { Check, Trash2, Plus, LogOut, ClipboardList, Pencil, Search } from 'lucide-react';
 import TodoModal from '../components/TodoModal'; // Import the new modal component
 
 // ===================================
@@ -34,12 +34,12 @@ function TodoItem({
   todo,
   onToggle,
   onDelete,
-  onEdit, // Add onEdit prop
+  onEdit,
 }: {
   todo: Todo;
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
-  onEdit: (todo: Todo) => void; // Add onEdit prop
+  onEdit: (todo: Todo) => void;
 }) {
   return (
     <motion.li
@@ -123,21 +123,23 @@ export default function HomePage() {
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
 
-  // Fetch todos when component mounts or dependencies change
+  // Fetch todos when user is loaded
   useEffect(() => {
     if (user) {
       fetchTodos();
     }
   }, [user]);
 
-  // Use a memoized value for debouncing search
+  // Debounced effect for search and filter changes
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
-        fetchTodos();
+        if (user) { // Only fetch if user is loaded
+            fetchTodos();
+        }
     }, 300); // 300ms debounce delay
 
     return () => clearTimeout(debounceTimer);
-  }, [searchTerm, filter]);
+  }, [searchTerm, filter, user]);
 
 
   const fetchTodos = async () => {
