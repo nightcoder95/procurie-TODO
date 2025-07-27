@@ -31,7 +31,7 @@ function SkeletonLoader() {
 }
 
 // ===================================
-// Todo Item Component
+// Todo Item Component to display a single Todo task
 // ===================================
 function TodoItem({
   todo,
@@ -186,6 +186,7 @@ export default function HomePage() {
   };
 
   const handleToggleTodo = async (id: number) => {
+    // Optimistically update the UI
     setTodos(todos.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t));
     try {
       await api.post(`/api/todos/${id}/toggle_complete/`);
@@ -199,6 +200,7 @@ export default function HomePage() {
 
   const handleDeleteTodo = async (id: number) => {
     const originalTodos = [...todos];
+    // Optimistically remove the todo
     setTodos(todos.filter((todo) => todo.id !== id));
     try {
       await api.delete(`/api/todos/${id}/`);

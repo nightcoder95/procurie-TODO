@@ -33,8 +33,8 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <ToastContainer
-            position="bottom-right"
-            autoClose={4000}
+            position="top-right"
+            autoClose={3000}
             hideProgressBar={false}
             newestOnTop={false}
             closeOnClick
