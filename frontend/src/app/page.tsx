@@ -6,7 +6,10 @@ import { Todo } from '../types';
 import api from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Trash2, Plus, LogOut, ClipboardList, Pencil, Search } from 'lucide-react';
-import TodoModal from '../components/TodoModal'; // Import the new modal component
+import TodoModal from '../components/TodoModal';
+
+// Import the toast function
+import { toast } from 'react-toastify';
 
 // ===================================
 // Skeleton Loader Component
@@ -54,7 +57,6 @@ function TodoItem({
           : 'bg-white dark:bg-gray-800'
       } shadow-sm`}
     >
-      {/* Custom Checkbox */}
       <button
         onClick={() => onToggle(todo.id)}
         className={`flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
@@ -66,7 +68,6 @@ function TodoItem({
         {todo.is_completed && <Check className="w-4 h-4 text-white" />}
       </button>
 
-      {/* Todo Title & Description */}
       <div className="ml-4 flex-grow">
         <span
           className={`font-medium transition-colors duration-300 ${
@@ -86,7 +87,6 @@ function TodoItem({
         )}
       </div>
       
-      {/* Action Buttons */}
       <div className="flex items-center ml-4 space-x-2">
         <button
           onClick={() => onEdit(todo)}
@@ -111,54 +111,46 @@ function TodoItem({
 // ===================================
 export default function HomePage() {
   const { user, loading, logout } = useAuth();
-
-  // State
   const [todos, setTodos] = useState<Todo[]>([]);
   const [isLoadingTodos, setIsLoadingTodos] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
 
-  // Fetch todos when user is loaded
   useEffect(() => {
     if (user) {
       fetchTodos();
     }
   }, [user]);
 
-  // Debounced effect for search and filter changes
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
-        if (user) { // Only fetch if user is loaded
+        if (user) {
             fetchTodos();
         }
-    }, 300); // 300ms debounce delay
+    }, 300);
 
     return () => clearTimeout(debounceTimer);
   }, [searchTerm, filter, user]);
-
 
   const fetchTodos = async () => {
     setIsLoadingTodos(true);
     try {
         let url = '/api/todos/';
         const params = new URLSearchParams();
-
         if (filter !== 'all') {
             params.append('is_completed', filter === 'completed' ? 'true' : 'false');
         }
         if (searchTerm) {
             params.append('search', searchTerm);
         }
-
         const response = await api.get(`${url}?${params.toString()}`);
         setTodos(response.data.results);
     } catch (error) {
       console.error('Failed to fetch todos', error);
+      toast.error('Failed to load your tasks.');
       setTodos([]);
     } finally {
       setIsLoadingTodos(false);
@@ -172,33 +164,36 @@ export default function HomePage() {
 
   const handleModalSubmit = async (title: string, description: string) => {
     setIsModalLoading(true);
+    const isEditing = !!todoToEdit;
     try {
-        if (todoToEdit) {
-            // Update existing todo
+        if (isEditing) {
             const response = await api.patch(`/api/todos/${todoToEdit.id}/`, { title, description });
             setTodos(todos.map(t => t.id === todoToEdit.id ? response.data : t));
+            toast.success('Task updated successfully!');
         } else {
-            // Create new todo
             const response = await api.post('/api/todos/', { title, description });
             setTodos([response.data, ...todos]);
+            toast.success('New task added!');
         }
         setIsModalOpen(false);
         setTodoToEdit(null);
     } catch (error) {
         console.error('Failed to save todo', error);
+        toast.error(isEditing ? 'Failed to update task.' : 'Failed to add task.');
     } finally {
         setIsModalLoading(false);
     }
   };
 
   const handleToggleTodo = async (id: number) => {
-    // Optimistic update
     setTodos(todos.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t));
     try {
       await api.post(`/api/todos/${id}/toggle_complete/`);
+      toast.info('Task status updated.');
     } catch (error) {
       console.error('Failed to toggle todo', error);
-      fetchTodos(); // Revert on error
+      toast.error('Could not update task status.');
+      fetchTodos();
     }
   };
 
@@ -207,9 +202,11 @@ export default function HomePage() {
     setTodos(todos.filter((todo) => todo.id !== id));
     try {
       await api.delete(`/api/todos/${id}/`);
+      toast.success('Task deleted.');
     } catch (error) {
       console.error('Failed to delete todo', error);
-      setTodos(originalTodos); // Revert on error
+      toast.error('Failed to delete the task.');
+      setTodos(originalTodos);
     }
   };
 
@@ -231,7 +228,6 @@ export default function HomePage() {
         isLoading={isModalLoading}
       />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-        {/* Header */}
         <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
           <nav className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
               <div className="flex items-center space-x-3">
@@ -250,9 +246,7 @@ export default function HomePage() {
           </nav>
         </header>
 
-        {/* Main Content */}
         <main className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8 mt-4">
-          {/* Controls: Add Button, Search, and Filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <button
                 onClick={() => setIsModalOpen(true)}
@@ -273,7 +267,6 @@ export default function HomePage() {
             </div>
           </div>
           
-          {/* Filter Buttons */}
           <div className="flex items-center justify-center space-x-2 mb-8 p-1 bg-gray-200/50 dark:bg-gray-800/50 rounded-lg">
             {(['all', 'pending', 'completed'] as const).map(f => (
                 <button key={f} onClick={() => setFilter(f)}
@@ -285,8 +278,6 @@ export default function HomePage() {
             ))}
           </div>
 
-
-          {/* Todos List */}
           <div>
             {isLoadingTodos ? (
               <SkeletonLoader />
