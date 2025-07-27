@@ -284,6 +284,7 @@ export default function HomePage() {
             {isLoadingTodos ? (
               <SkeletonLoader />
             ) : (
+              // Minimal Loading Indicator
               <AnimatePresence>
                 {todos.length > 0 ? (
                   <ul className="space-y-4">
