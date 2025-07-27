@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { Todo } from '../types';
 import api from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Trash2, Plus, LogOut, ClipboardList } from 'lucide-react';
+import { Check, Trash2, Plus, LogOut, ClipboardList, Pencil, Search } from 'lucide-react';
+import TodoModal from '../components/TodoModal'; // Import the new modal component
 
 // ===================================
 // Skeleton Loader Component
@@ -26,7 +27,6 @@ function SkeletonLoader() {
   );
 }
 
-
 // ===================================
 // Todo Item Component
 // ===================================
@@ -34,10 +34,12 @@ function TodoItem({
   todo,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   todo: Todo;
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
+  onEdit: (todo: Todo) => void;
 }) {
   return (
     <motion.li
@@ -55,7 +57,7 @@ function TodoItem({
       {/* Custom Checkbox */}
       <button
         onClick={() => onToggle(todo.id)}
-        className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-all duration-200 ${
+        className={`flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
           todo.is_completed
             ? 'bg-blue-500 border-blue-500'
             : 'border-gray-300 dark:border-gray-500 hover:border-blue-500'
@@ -64,24 +66,41 @@ function TodoItem({
         {todo.is_completed && <Check className="w-4 h-4 text-white" />}
       </button>
 
-      {/* Todo Title */}
-      <span
-        className={`ml-4 flex-grow font-medium transition-colors duration-300 ${
-          todo.is_completed
-            ? 'line-through text-gray-500 dark:text-gray-400/80'
-            : 'text-gray-800 dark:text-gray-100'
-        }`}
-      >
-        {todo.title}
-      </span>
-
-      {/* Delete Button */}
-      <button
-        onClick={() => onDelete(todo.id)}
-        className="ml-4 p-1.5 rounded-full text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"
-      >
-        <Trash2 size={18} />
-      </button>
+      {/* Todo Title & Description */}
+      <div className="ml-4 flex-grow">
+        <span
+          className={`font-medium transition-colors duration-300 ${
+            todo.is_completed
+              ? 'line-through text-gray-500 dark:text-gray-400/80'
+              : 'text-gray-800 dark:text-gray-100'
+          }`}
+        >
+          {todo.title}
+        </span>
+        {todo.description && (
+          <p className={`text-sm mt-1 transition-colors duration-300 ${
+            todo.is_completed ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400'
+          }`}>
+            {todo.description}
+          </p>
+        )}
+      </div>
+      
+      {/* Action Buttons */}
+      <div className="flex items-center ml-4 space-x-2">
+        <button
+          onClick={() => onEdit(todo)}
+          className="p-1.5 rounded-full text-gray-400 hover:bg-green-500/10 hover:text-green-500 transition-all duration-200"
+        >
+          <Pencil size={18} />
+        </button>
+        <button
+          onClick={() => onDelete(todo.id)}
+          className="p-1.5 rounded-full text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"
+        >
+          <Trash2 size={18} />
+        </button>
+      </div>
     </motion.li>
   );
 }
@@ -92,68 +111,105 @@ function TodoItem({
 // ===================================
 export default function HomePage() {
   const { user, loading, logout } = useAuth();
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [newTodoTitle, setNewTodoTitle] = useState('');
-  const [isLoadingTodos, setIsLoadingTodos] = useState(true);
 
+  // State
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoadingTodos, setIsLoadingTodos] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalLoading, setIsModalLoading] = useState(false);
+  const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
+
+  // Fetch todos when user is loaded
   useEffect(() => {
     if (user) {
       fetchTodos();
     }
   }, [user]);
 
+  // Debounced effect for search and filter changes
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+        if (user) { // Only fetch if user is loaded
+            fetchTodos();
+        }
+    }, 300); // 300ms debounce delay
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm, filter, user]);
+
+
   const fetchTodos = async () => {
     setIsLoadingTodos(true);
     try {
-      const response = await api.get('/api/todos/');
-      setTodos(response.data.results.sort((a: Todo, b: Todo) => Number(a.is_completed) - Number(b.is_completed)));
+        let url = '/api/todos/';
+        const params = new URLSearchParams();
+
+        if (filter !== 'all') {
+            params.append('is_completed', filter === 'completed' ? 'true' : 'false');
+        }
+        if (searchTerm) {
+            params.append('search', searchTerm);
+        }
+
+        const response = await api.get(`${url}?${params.toString()}`);
+        setTodos(response.data.results);
     } catch (error) {
       console.error('Failed to fetch todos', error);
+      setTodos([]);
     } finally {
       setIsLoadingTodos(false);
     }
   };
+  
+  const handleOpenEditModal = (todo: Todo) => {
+    setTodoToEdit(todo);
+    setIsModalOpen(true);
+  };
 
-  const handleAddTodo = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!newTodoTitle.trim()) return;
-
+  const handleModalSubmit = async (title: string, description: string) => {
+    setIsModalLoading(true);
     try {
-      const response = await api.post('/api/todos/', { title: newTodoTitle });
-      setTodos([response.data, ...todos]);
-      setNewTodoTitle('');
+        if (todoToEdit) {
+            // Update existing todo
+            const response = await api.patch(`/api/todos/${todoToEdit.id}/`, { title, description });
+            setTodos(todos.map(t => t.id === todoToEdit.id ? response.data : t));
+        } else {
+            // Create new todo
+            const response = await api.post('/api/todos/', { title, description });
+            setTodos([response.data, ...todos]);
+        }
+        setIsModalOpen(false);
+        setTodoToEdit(null);
     } catch (error) {
-      console.error('Failed to add todo', error);
+        console.error('Failed to save todo', error);
+    } finally {
+        setIsModalLoading(false);
     }
   };
 
   const handleToggleTodo = async (id: number) => {
-    // Optimistic update for better UX
-    setTodos(prevTodos => {
-        const newTodos = prevTodos.map(todo =>
-            todo.id === id ? { ...todo, is_completed: !todo.is_completed } : todo
-        );
-        return newTodos.sort((a, b) => Number(a.is_completed) - Number(b.is_completed));
-    });
-
+    // Optimistic update
+    setTodos(todos.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t));
     try {
       await api.post(`/api/todos/${id}/toggle_complete/`);
-      // Optionally refetch or trust the optimistic update
     } catch (error) {
       console.error('Failed to toggle todo', error);
-      // Revert on error
-      fetchTodos();
+      fetchTodos(); // Revert on error
     }
   };
 
   const handleDeleteTodo = async (id: number) => {
+    const originalTodos = [...todos];
     setTodos(todos.filter((todo) => todo.id !== id));
     try {
       await api.delete(`/api/todos/${id}/`);
     } catch (error) {
       console.error('Failed to delete todo', error);
-      // Revert on error
-      fetchTodos();
+      setTodos(originalTodos); // Revert on error
     }
   };
 
@@ -166,75 +222,101 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-      {/* Header */}
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
-        <nav className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-                <ClipboardList className="h-8 w-8 text-blue-500" />
-                <h1 className="text-xl font-bold hidden sm:block">
-                    Hello, {user?.first_name || user?.username}!
-                </h1>
-            </div>
-            <button
-                onClick={logout}
-                className="flex items-center space-x-2 text-sm font-semibold px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"
-            >
-                <LogOut size={16} />
-                <span>Logout</span>
-            </button>
-        </nav>
-      </header>
+    <>
+      <TodoModal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setTodoToEdit(null); }}
+        onSubmit={handleModalSubmit}
+        todoToEdit={todoToEdit}
+        isLoading={isModalLoading}
+      />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+        {/* Header */}
+        <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
+          <nav className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                  <ClipboardList className="h-8 w-8 text-blue-500" />
+                  <h1 className="text-xl font-bold hidden sm:block">
+                      Hello, {user?.first_name || user?.username}!
+                  </h1>
+              </div>
+              <button
+                  onClick={logout}
+                  className="flex items-center space-x-2 text-sm font-semibold px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"
+              >
+                  <LogOut size={16} />
+                  <span>Logout</span>
+              </button>
+          </nav>
+        </header>
 
-      {/* Main Content */}
-      <main className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8 mt-4">
-        {/* Add Todo Form */}
-        <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.4 }}>
-            <form onSubmit={handleAddTodo} className="flex gap-2 p-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
+        {/* Main Content */}
+        <main className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8 mt-4">
+          {/* Controls: Add Button, Search, and Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <button
+                onClick={() => setIsModalOpen(true)}
+                className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white px-5 py-2.5 rounded-lg hover:bg-blue-600 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+            >
+                <Plus size={18} />
+                <span className="font-semibold">Add New Task</span>
+            </button>
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input
                     type="text"
-                    value={newTodoTitle}
-                    onChange={(e) => setNewTodoTitle(e.target.value)}
-                    placeholder="What's on your mind today?"
-                    className="flex-grow px-4 py-2 bg-transparent focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search tasks..."
+                    className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <button
-                    type="submit"
-                    className="flex-shrink-0 flex items-center gap-2 bg-blue-500 text-white px-5 py-2.5 rounded-lg hover:bg-blue-600 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-500/50"
-                >
-                    <Plus size={18} />
-                    <span className="font-semibold">Add</span>
+            </div>
+          </div>
+          
+          {/* Filter Buttons */}
+          <div className="flex items-center justify-center space-x-2 mb-8 p-1 bg-gray-200/50 dark:bg-gray-800/50 rounded-lg">
+            {(['all', 'pending', 'completed'] as const).map(f => (
+                <button key={f} onClick={() => setFilter(f)}
+                    className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors w-full ${
+                        filter === f ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-500 hover:text-blue-500'
+                    }`}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
-            </form>
-        </motion.div>
+            ))}
+          </div>
 
-        {/* Todos List */}
-        <div className="mt-8">
-          {isLoadingTodos ? (
-            <SkeletonLoader />
-          ) : (
-            <AnimatePresence>
-              {todos.length > 0 ? (
-                <ul className="space-y-4">
-                  {todos.map((todo) => (
-                    <TodoItem
-                      key={todo.id}
-                      todo={todo}
-                      onToggle={handleToggleTodo}
-                      onDelete={handleDeleteTodo}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="text-center py-10 px-4">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300">All clear!</h3>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">Looks like you have no tasks. Add one above to get started.</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
-        </div>
-      </main>
-    </div>
+
+          {/* Todos List */}
+          <div>
+            {isLoadingTodos ? (
+              <SkeletonLoader />
+            ) : (
+              <AnimatePresence>
+                {todos.length > 0 ? (
+                  <ul className="space-y-4">
+                    {todos.map((todo) => (
+                      <TodoItem
+                        key={todo.id}
+                        todo={todo}
+                        onToggle={handleToggleTodo}
+                        onDelete={handleDeleteTodo}
+                        onEdit={handleOpenEditModal}
+                      />
+                    ))}
+                  </ul>
+                ) : (
+                  <motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="text-center py-10 px-4">
+                      <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300">No tasks found!</h3>
+                      <p className="text-gray-500 dark:text-gray-400 mt-1">
+                        {searchTerm ? `No results for "${searchTerm}".` : "Try adding a new task to get started."}
+                      </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
+          </div>
+        </main>
+      </div>
+    </>
   );
 }
